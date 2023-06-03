@@ -1,5 +1,5 @@
 use water_spider::run;
 
 fn main() {
-    run();
+    pollster::block_on(run());
 }
