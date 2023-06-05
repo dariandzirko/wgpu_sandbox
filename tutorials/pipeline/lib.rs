@@ -19,6 +19,8 @@ struct State {
     window: Window,
 
     render_pipeline: wgpu::RenderPipeline,
+    challenge_render_pipeline: wgpu::RenderPipeline,
+    pipeline_swap: bool,
 }
 
 impl State {
@@ -142,6 +144,56 @@ impl State {
             multiview: None,
         });
 
+        // Challenge pipeline
+        let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
+            label: Some("Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("challenge.wgsl").into()),
+        });
+
+        // Macro!
+        // let shader = device.create_shader_module(wgpu::include_wgsl!("shader.wgsl"));
+
+        let challenge_render_pipeline =
+            device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
+                label: Some("Render Pipeline"),
+                layout: Some(&render_pipeline_layout),
+                vertex: wgpu::VertexState {
+                    module: &shader,
+                    entry_point: "vs_main",
+                    buffers: &[],
+                },
+                fragment: Some(wgpu::FragmentState {
+                    module: &shader,
+                    entry_point: "fs_main",
+                    targets: &[Some(wgpu::ColorTargetState {
+                        format: config.format,
+                        blend: Some(wgpu::BlendState::REPLACE),
+                        write_mask: wgpu::ColorWrites::ALL,
+                    })],
+                }),
+
+                primitive: wgpu::PrimitiveState {
+                    topology: wgpu::PrimitiveTopology::TriangleList,
+                    strip_index_format: None,
+                    front_face: wgpu::FrontFace::Ccw,
+                    cull_mode: Some(wgpu::Face::Back),
+                    // Setting this to anything other than FILL requires Features::NON_FILL_POLYGON
+                    polygon_mode: wgpu::PolygonMode::Fill,
+                    // Requires Features::DEPTH_CLIP_CONTROL,
+                    unclipped_depth: false,
+                    // Requires Features::CONSERVATIVE RASTERIZATION
+                    conservative: false,
+                },
+
+                depth_stencil: None,
+                multisample: wgpu::MultisampleState {
+                    count: 1,
+                    mask: !0,
+                    alpha_to_coverage_enabled: false,
+                },
+                multiview: None,
+            });
+
         Self {
             surface,
             device,
@@ -150,6 +202,8 @@ impl State {
             size,
             window,
             render_pipeline,
+            challenge_render_pipeline,
+            pipeline_swap: false,
         }
     }
 
@@ -167,7 +221,21 @@ impl State {
     }
 
     fn input(&mut self, event: &WindowEvent) -> bool {
-        false
+        match event {
+            WindowEvent::KeyboardInput {
+                input:
+                    KeyboardInput {
+                        state,
+                        virtual_keycode: Some(VirtualKeyCode::Space),
+                        ..
+                    },
+                ..
+            } => {
+                self.pipeline_swap = *state == ElementState::Released;
+                true
+            }
+            _ => false,
+        }
     }
 
     fn update(&mut self) {
@@ -206,7 +274,11 @@ impl State {
                 depth_stencil_attachment: None,
             });
 
-            render_pass.set_pipeline(&self.render_pipeline);
+            if !self.pipeline_swap {
+                render_pass.set_pipeline(&self.render_pipeline);
+            } else {
+                render_pass.set_pipeline(&self.challenge_render_pipeline);
+            }
             render_pass.draw(0..3, 0..1);
         }
 
