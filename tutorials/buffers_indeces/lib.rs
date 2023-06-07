@@ -14,31 +14,30 @@ use wasm_bindgen::prelude::*;
 #[derive(Copy, Clone, Debug, bytemuck::Pod, bytemuck::Zeroable)]
 struct Vertex {
     position: [f32; 3],
-    tex_coords: [f32; 2],
+    color: [f32; 3],
 }
 
 const VERTICES: &[Vertex] = &[
-    // Changed
     Vertex {
         position: [-0.0868241, 0.49240386, 0.0],
-        tex_coords: [0.4131759, 0.00759614],
-    }, // A
+        color: [0.5, 0.0, 0.5],
+    }, //A
     Vertex {
         position: [-0.49513406, 0.06958647, 0.0],
-        tex_coords: [0.0048659444, 0.43041354],
-    }, // B
+        color: [0.5, 0.0, 0.5],
+    }, //B
     Vertex {
         position: [-0.21918549, -0.44939706, 0.0],
-        tex_coords: [0.28081453, 0.949397],
-    }, // C
+        color: [0.5, 0.0, 0.5],
+    }, //C
     Vertex {
         position: [0.35966998, -0.3473291, 0.0],
-        tex_coords: [0.85967, 0.84732914],
-    }, // D
+        color: [0.5, 0.0, 0.5],
+    }, //D
     Vertex {
         position: [0.44147372, 0.2347359, 0.0],
-        tex_coords: [0.9414737, 0.2652641],
-    }, // E
+        color: [0.5, 0.0, 0.5],
+    }, //E
 ];
 
 const INDECES: &[u16] = &[0, 1, 4, 1, 2, 4, 2, 3, 4];
@@ -57,7 +56,7 @@ impl Vertex {
                 wgpu::VertexAttribute {
                     offset: std::mem::size_of::<[f32; 3]>() as wgpu::BufferAddress,
                     shader_location: 1,
-                    format: wgpu::VertexFormat::Float32x2,
+                    format: wgpu::VertexFormat::Float32x3,
                 },
             ],
         }
@@ -71,11 +70,12 @@ struct State {
     config: wgpu::SurfaceConfiguration,
     size: winit::dpi::PhysicalSize<u32>,
     window: Window,
+
     render_pipeline: wgpu::RenderPipeline,
+
     vertex_buffer: wgpu::Buffer,
     index_buffer: wgpu::Buffer,
     num_indeces: u32,
-    diffuse_bind_group: wgpu::BindGroup,
 }
 
 impl State {
@@ -144,113 +144,6 @@ impl State {
         };
         surface.configure(&device, &config);
 
-        let diffuse_bytes = include_bytes!("happy-tree.png");
-        let diffuse_image = image::load_from_memory(diffuse_bytes).unwrap();
-        let diffuse_rgba = diffuse_image.to_rgba8();
-
-        use image::GenericImageView;
-        let dimensions = diffuse_image.dimensions();
-
-        let texture_size = wgpu::Extent3d {
-            width: dimensions.0,
-            height: dimensions.1,
-            depth_or_array_layers: 1,
-        };
-
-        let diffuse_texture = device.create_texture(&wgpu::TextureDescriptor {
-            // All textures are stored as 3D, we represent out 2D texture
-            // by setting depth to 1
-            size: texture_size,
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            // Most images are stored using sRGB so we need to reflect that here
-            format: wgpu::TextureFormat::Rgba8UnormSrgb,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
-            label: Some("diffuse_texture"),
-            // This is the same as with the SurfaceConfig. It
-            // specifies what texture formats can be used to
-            // create TextureViews for this texture. The base
-            // texture format (Rgba8UnormSrgb in this case) is
-            // always supported. Note that using a different
-            // texture format is not supported on the WebGL2 backend
-            view_formats: &[],
-        });
-
-        queue.write_texture(
-            // Tells wgpu where to copy the pixel data
-            wgpu::ImageCopyTexture {
-                texture: &diffuse_texture,
-                mip_level: 0,
-                origin: wgpu::Origin3d::ZERO,
-                aspect: wgpu::TextureAspect::All,
-            },
-            // The actual pixel data
-            &diffuse_rgba,
-            // The layout of the texture
-            wgpu::ImageDataLayout {
-                offset: 0,
-                bytes_per_row: std::num::NonZeroU32::new(4 * dimensions.0),
-                rows_per_image: std::num::NonZeroU32::new(4 * dimensions.1),
-            },
-            texture_size,
-        );
-
-        // We don't need to configure the texture view much, so let's
-        // let wgpu define it
-        // We don't need to configure the texture view much, so let's
-
-        let diffuse_texture_view =
-            diffuse_texture.create_view(&wgpu::TextureViewDescriptor::default());
-        let diffuse_sample = device.create_sampler(&wgpu::SamplerDescriptor {
-            label: Some("diffuse_sample"),
-            address_mode_u: wgpu::AddressMode::ClampToEdge,
-            address_mode_v: wgpu::AddressMode::ClampToEdge,
-            address_mode_w: wgpu::AddressMode::ClampToEdge,
-            mag_filter: wgpu::FilterMode::Linear,
-            min_filter: wgpu::FilterMode::Nearest,
-            mipmap_filter: wgpu::FilterMode::Nearest,
-            ..Default::default()
-        });
-
-        let texture_bind_group_layout =
-            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("texture_bind_group_layout"),
-                entries: &[
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 0,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Texture {
-                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
-                            view_dimension: wgpu::TextureViewDimension::D2,
-                            multisampled: false,
-                        },
-                        count: None,
-                    },
-                    wgpu::BindGroupLayoutEntry {
-                        binding: 1,
-                        visibility: wgpu::ShaderStages::FRAGMENT,
-                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
-                        count: None,
-                    },
-                ],
-            });
-
-        let diffuse_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            layout: &texture_bind_group_layout,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: wgpu::BindingResource::TextureView(&diffuse_texture_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::Sampler(&diffuse_sample),
-                },
-            ],
-            label: Some("diffuse_bind_group"),
-        });
-
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("Shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shader.wgsl").into()),
@@ -262,7 +155,7 @@ impl State {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[&texture_bind_group_layout],
+                bind_group_layouts: &[],
                 push_constant_ranges: &[],
             });
 
@@ -331,7 +224,6 @@ impl State {
             vertex_buffer,
             index_buffer,
             num_indeces,
-            diffuse_bind_group,
         }
     }
 
@@ -389,7 +281,6 @@ impl State {
             });
 
             render_pass.set_pipeline(&self.render_pipeline);
-            render_pass.set_bind_group(0, &self.diffuse_bind_group, &[]);
             render_pass.set_vertex_buffer(0, self.vertex_buffer.slice(..));
             render_pass.set_index_buffer(self.index_buffer.slice(..), wgpu::IndexFormat::Uint16);
             render_pass.draw_indexed(0..self.num_indeces, 0, 0..1);
